@@ -1,0 +1,32 @@
+{
+  "modelos": {
+    "_prod_ia1": "openai/gpt-4o-2024-11-20",
+    "_prod_ia2": "anthropic/claude-3-5-sonnet-20241022",
+    "_prod_ia3": "deepseek/deepseek-chat",
+    "ia1": "qwen/qwen3.6-plus:free",
+    "ia2": "qwen/qwen3-coder:free",
+    "ia3": "google/gemma-3-27b-it:free",
+    "whisper": "whisper-1"
+  },
+  "rutas": {
+    "workspace":  "/home/laortiz937/soa/workspace",
+    "output":     "/home/laortiz937/soa/output",
+    "rollback":   "/home/laortiz937/soa/rollback",
+    "temp":       "/home/laortiz937/soa/temp",
+    "context":    "/home/laortiz937/soa/context"
+  },
+  "ciclo": {
+    "max_iteraciones_ia1_ia2": 10,
+    "max_iteraciones_ia3": 5
+  },
+  "extractor": {
+    "blancos_previos_marcador": 1,
+    "blancas_corte_sugerencias": 3,
+    "blancos_fin_archivo": 5,
+    "max_lineas_no_item": 10,
+    "http_timeout_ms": 120000
+  },
+  "vps": {
+    "proyecto_path": "/var/www/proyecto"
+  }
+}

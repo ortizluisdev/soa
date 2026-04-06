@@ -1,0 +1,19 @@
+# Proyecto SOA — Modo Local
+
+## Descripción
+Sistema de pruebas SOA corriendo localmente. Sin VPS por ahora.
+Los archivos generados se guardan en /home/laortiz937/soa/output/
+
+## Entorno
+- Máquina: Ubuntu local
+- Output: /home/laortiz937/soa/output/
+- Deploy server: http://localhost:3000 (cuando esté activo)
+- n8n: http://localhost:5678
+
+## Stack objetivo
+HTML / CSS / JavaScript vanilla
+
+## Reglas
+- Generar archivos completos y funcionales
+- Guardar siempre en el directorio output/
+- No asumir que hay servidor web externo

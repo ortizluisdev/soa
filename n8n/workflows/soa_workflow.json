@@ -1,0 +1,1368 @@
+{
+  "name": "SOA - Orquestador Principal",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "soa",
+        "options": {}
+      },
+      "id": "6c184b5f-8b03-4b8a-a595-b7a6921a0422",
+      "name": "N01 Recepción WhatsApp",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -3696,
+        560
+      ],
+      "webhookId": "soa-main-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// N02 — Validar webhook key y número autorizado\nconst item = $input.first();\nconst headers = item.json.headers || {};\nconst body = (item.json.event !== undefined) ? item.json : (item.json.body || item.json);\nconst webhookKey = (headers['x-webhook-key'] || '').trim();\nconst expectedKey = ($env.N8N_WEBHOOK_KEY || 'soa_wh_0176ebabe2b446a3fe6f00773174f88d').trim();\nconst autorizado = ($env.WA_NUMERO_AUTORIZADO || '573232456846').replace('+','').replace(/\\s/g,'').trim();\nconsole.log('[N02] webhookKey:', webhookKey, '| match:', webhookKey === expectedKey);\nif (!webhookKey || webhookKey !== expectedKey) { console.log('[N02] BLOQUEADO: key inválida'); return []; }\nconst data = body.data || {};\nconst key = data.key || {};\nif (key.fromMe === true) return [];\nconst remoteJid = (key.remoteJid || '').toString();\nconst numero = remoteJid.replace('@s.whatsapp.net','').replace('@c.us','').replace('+','').trim();\nconsole.log('[N02] número:', numero, '| autorizado:', autorizado);\nif (!numero || numero !== autorizado) { console.log('[N02] BLOQUEADO: número no autorizado'); return []; }\nconsole.log('[N02] OK');\nreturn [{json: {...item.json, _body: body}}];"
+      },
+      "id": "68910c63-24a9-4fc8-84ea-e037630db8ce",
+      "name": "N02 Validar Webhook y Número",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3472,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// N03 — Extraer y clasificar mensaje WhatsApp\nconst item = $input.first();\nconst body = item.json._body || item.json.body || item.json;\nconst data = body.data || {};\nconst key = data.key || {};\nconst message = data.message || {};\nconst remoteJid = (key.remoteJid || '').toString();\nconst remitente = remoteJid.replace('@s.whatsapp.net','').replace('@c.us','');\nconst timestamp = data.messageTimestamp || Math.floor(Date.now()/1000);\nlet texto = '', tipo_mensaje = 'texto', audio_base64 = '', audio_mimetype = 'audio/ogg';\nif (message.conversation) { texto = message.conversation; }\nelse if (message.extendedTextMessage) { texto = message.extendedTextMessage.text || ''; }\nelse if (message.audioMessage) { tipo_mensaje = 'audio'; audio_base64 = data.message?.base64 || ''; audio_mimetype = message.audioMessage.mimetype || 'audio/ogg'; }\nelse if (message.imageMessage) { texto = message.imageMessage.caption || '[imagen]'; }\nelse if (message.documentMessage) { texto = (message.documentMessage.caption || message.documentMessage.fileName || 'doc').trim(); }\nelse if (message.videoMessage) { texto = message.videoMessage.caption || '[video]'; }\ntexto = texto.trim();\nlet comando_especial = null;\nconst tu = texto.toUpperCase();\nif (tu === 'REINICIAR') comando_especial = 'REINICIAR';\nelse if (tu === 'ROLLBACK') comando_especial = 'ROLLBACK';\nelse if (tu === 'STOP') comando_especial = 'STOP';\nif (comando_especial) tipo_mensaje = 'comando';\nconsole.log('[N03] tipo:', tipo_mensaje, '| txt:', texto.substring(0,50));\nreturn [{json:{remitente, texto, tipo_mensaje, timestamp, audio_base64, audio_mimetype, comando_especial, message_id: key.id || ''}}];"
+      },
+      "id": "cd260573-0fc3-44e1-a6fb-19c9db1ad2fd",
+      "name": "N03 Extraer y Clasificar Mensaje",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3248,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.tipo_mensaje }}",
+                    "rightValue": "texto",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "975624fd-50be-481c-9d8a-33cf778bfb38"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.tipo_mensaje }}",
+                    "rightValue": "audio",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "8979cfcf-6634-4a33-935d-5412aa870d04"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.tipo_mensaje }}",
+                    "rightValue": "comando",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "6cf120d1-c782-4d7a-9e19-3e5636a89aba"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "721a419a-4d9b-4483-9a0c-979dd48ad018",
+      "name": "N04 Clasificar Tipo de Entrada",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -3024,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// N04b — Transcripción de audio con Whisper\nconst item = $input.first();\nconst audioBase64 = item.json.audio_base64 || '';\nconst mimetype = item.json.audio_mimetype || 'audio/ogg';\n\nif (!audioBase64) {\n  return [{json:{...item.json, texto:'[Audio vacío]', tipo_mensaje:'texto'}}];\n}\n\nconst apiKey = $env.OPENAI_API_KEY || '';\nif (!apiKey) {\n  return [{json:{...item.json, texto:'[OpenAI Key no configurada]', tipo_mensaje:'texto'}}];\n}\n\ntry {\n  const audioBuffer = Buffer.from(audioBase64, 'base64');\n  const ext = mimetype.includes('mp4') ? 'mp4' : mimetype.includes('mpeg') ? 'mp3' : 'ogg';\n  const boundary = '----FormBoundary' + Math.random().toString(36).slice(2);\n\n  const header = Buffer.from(\n    `--${boundary}\\r\\nContent-Disposition: form-data; name=\"model\"\\r\\n\\r\\nwhisper-1\\r\\n` +\n    `--${boundary}\\r\\nContent-Disposition: form-data; name=\"language\"\\r\\n\\r\\nes\\r\\n` +\n    `--${boundary}\\r\\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.${ext}\"\\r\\nContent-Type: ${mimetype}\\r\\n\\r\\n`\n  );\n  const footer = Buffer.from(`\\r\\n--${boundary}--\\r\\n`);\n  const body = Buffer.concat([header, audioBuffer, footer]);\n\n  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {\n    method: 'POST',\n    headers: {\n      'Authorization': 'Bearer ' + apiKey,\n      'Content-Type': `multipart/form-data; boundary=${boundary}`,\n      'Content-Length': body.length.toString()\n    },\n    body\n  });\n\n  const result = await response.json();\n  const transcripcion = result.text || '[No se pudo transcribir]';\n  console.log('[SOA-N04b] Transcripción OK:', transcripcion.substring(0,80));\n  return [{json:{...item.json, texto: transcripcion, tipo_mensaje:'texto'}}];\n\n} catch(e) {\n  console.log('[SOA-N04b] Error:', e.message);\n  return [{json:{...item.json, texto:'[Error transcripción: ' + e.message + ']', tipo_mensaje:'texto'}}];\n}"
+      },
+      "id": "1c49546c-573c-4caf-b3b1-e18ef83b4b81",
+      "name": "N04b Transcribir Audio (Whisper)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3024,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// N04c — Manejar comandos especiales\nconst fs = require('fs');\nconst path = require('path');\nconst item = $input.first();\nconst comando = item.json.comando_especial;\nconst SOA_BASE = '/home/node/soa';\nlet mensaje_wa = '';\n\ntry {\n  if (comando === 'REINICIAR') {\n    // Borrar archivos temporales\n    ['temp/iteraciones.json','temp/evasiones.json'].forEach(f => {\n      try { fs.unlinkSync(path.join(SOA_BASE, f)); } catch(e){}\n    });\n    fs.writeFileSync(path.join(SOA_BASE,'temp/iteraciones.json'), JSON.stringify({ia1_ia2:0,ia3:0}));\n    fs.writeFileSync(path.join(SOA_BASE,'temp/evasiones.json'), JSON.stringify({ia1:0,ia2:0,ia3:0}));\n    mensaje_wa = '♻️ *SOA reiniciado*\\n\\nContadores de iteraciones y evasiones limpiados.\\nEl sistema está listo para una nueva tarea.';\n    console.log('[SOA-CMD] REINICIAR ejecutado');\n    \n  } else if (comando === 'ROLLBACK') {\n    const rollbackDir = path.join(SOA_BASE, 'rollback');\n    const archivos = fs.existsSync(rollbackDir) ? \n      fs.readdirSync(rollbackDir).filter(f => f.endsWith('.bak')).sort().reverse() : [];\n    \n    if (archivos.length === 0) {\n      mensaje_wa = '⚠️ *Rollback fallido*\\n\\nNo hay backups disponibles.';\n    } else {\n      const ultimo = archivos[0];\n      const nombreOriginal = ultimo.replace(/_\\d{8}_\\d{6}\\.bak$/, '');\n      const src = path.join(rollbackDir, ultimo);\n      const dst = path.join(SOA_BASE, 'output', nombreOriginal);\n      fs.copyFileSync(src, dst);\n      mensaje_wa = '⏪ *Rollback exitoso*\\n\\nArchivo restaurado: ' + nombreOriginal + '\\nBackup: ' + ultimo;\n      console.log('[SOA-CMD] ROLLBACK →', nombreOriginal);\n    }\n    \n  } else if (comando === 'STOP') {\n    mensaje_wa = '⏹️ *SOA detenido*\\n\\nEl flujo actual fue cancelado.\\nEnvía una nueva tarea cuando estés listo.';\n    console.log('[SOA-CMD] STOP ejecutado');\n  }\n} catch(e) {\n  mensaje_wa = '❌ Error al ejecutar comando ' + comando + ': ' + e.message;\n  console.error('[SOA-CMD] Error:', e.message);\n}\n\nreturn [{json:{...item.json, mensaje_wa, ir_a_notificar: true}}];"
+      },
+      "id": "dc366021-3d2a-41aa-8ea7-19a966ce8eed",
+      "name": "N04c Manejar Comandos Especiales",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3024,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// N05 — Preparar contexto completo para las IAs\nconst fs = require('fs');\nconst path = require('path');\nconst item = $input.first();\nconst SOA_BASE = '/home/node/soa';\nconst leerArchivo = (ruta, defecto = '') => { try { return fs.readFileSync(ruta, 'utf8'); } catch(e) { return defecto; } };\n\nconst contexto_proyecto = leerArchivo(path.join(SOA_BASE, 'context/contexto_proyecto.txt'), '[Sin contexto de proyecto]');\nconst contexto_sesion   = leerArchivo(path.join(SOA_BASE, 'context/contexto_sesion.txt'), '[Primera sesion]');\nconst archivo_activo    = leerArchivo(path.join(SOA_BASE, 'workspace/archivo_activo.txt'), '').trim();\n\nlet contenido_archivo_activo = '';\nif (archivo_activo) {\n  contenido_archivo_activo = leerArchivo(path.join(SOA_BASE,'output',archivo_activo), '') ||\n                              leerArchivo(path.join(SOA_BASE,'workspace',archivo_activo), '[Archivo no encontrado]');\n}\n\nconst modelo_ia1 = $env.MODEL_IA1 || 'meta-llama/llama-3.3-70b-instruct:free';\nconst modelo_ia2 = $env.MODEL_IA2 || 'google/gemma-3-27b-it:free';\nconst modelo_ia3 = $env.MODEL_IA3 || 'mistralai/mistral-7b-instruct:free';\n\nlet config = {\n  ciclo:{ max_iteraciones_ia1_ia2:10, max_iteraciones_ia3:5 },\n  extractor:{ blancos_previos_marcador:1, blancas_corte_sugerencias:3, blancos_fin_archivo:5, max_lineas_no_item:10, http_timeout_ms:120000 },\n  modelos:{ ia1: modelo_ia1, ia2: modelo_ia2, ia3: modelo_ia3 }\n};\ntry {\n  const cfgLeido = JSON.parse(leerArchivo(path.join(SOA_BASE,'soa_config.json'), '{}'));\n  if (cfgLeido && Object.keys(cfgLeido).length > 0) config = {...config, ...cfgLeido};\n  config.modelos = { ia1: modelo_ia1, ia2: modelo_ia2, ia3: modelo_ia3 };\n} catch(e){}\n\ntry {\n  if (!fs.existsSync(path.join(SOA_BASE,'temp'))) fs.mkdirSync(path.join(SOA_BASE,'temp'),{recursive:true});\n} catch(e){}\n\n// FIX: solo resetear contadores si es un mensaje NUEVO (no viene del bucle IA3)\n// Si viene de N16 (IA3 tiene sugerencias), item.json tiene 'sugerencias' array\nconst vieneDeIA3 = Array.isArray(item.json.sugerencias) && item.json.sugerencias.length > 0;\nif (!vieneDeIA3) {\n  try {\n    fs.writeFileSync(path.join(SOA_BASE,'temp/iteraciones.json'), JSON.stringify({ia1_ia2:0,ia3:0}));\n    fs.writeFileSync(path.join(SOA_BASE,'temp/evasiones.json'),   JSON.stringify({ia1:0,ia2:0,ia3:0}));\n    console.log('[N05] Contadores reseteados — mensaje nuevo');\n  } catch(e){ console.error('[N05] Error reseteando contadores:', e.message); }\n}\n\n// FIX: unificar sugerencias_ia3 y sugerencias (el output de N15b usa 'sugerencias')\nconst sugerencias_ia3 = item.json.sugerencias_ia3 || item.json.sugerencias || null;\n\nlet tarea_usuario = item.json.texto || item.json.tarea_usuario || '';\nif (sugerencias_ia3 && sugerencias_ia3.length > 0) {\n  tarea_usuario = 'Aplicar mejoras de IA3 al archivo ' + (archivo_activo || 'activo') + ':\\n' +\n    sugerencias_ia3.map((s,i) => (i+1)+'. '+s).join('\\n');\n  console.log('[N05] Tarea viene de sugerencias IA3, archivo:', archivo_activo);\n}\n\nconsole.log('[N05] modelos | ia1:', modelo_ia1, '| ia2:', modelo_ia2, '| ia3:', modelo_ia3);\nconsole.log('[N05] tarea:', tarea_usuario.substring(0,80));\n\nreturn [{json:{\n  tarea_usuario,\n  remitente: item.json.remitente || '',\n  contexto_proyecto,\n  contexto_sesion,\n  archivo_activo,\n  contenido_archivo_activo,\n  config,\n  iteracion_actual: 0\n}}];"
+      },
+      "id": "e89875d3-8117-4cbf-8ea9-64af8a18c897",
+      "name": "N05 Preparar Contexto para IAs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2816,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.OPENROUTER_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "HTTP-Referer",
+              "value": "https://soa.local"
+            },
+            {
+              "name": "X-Title",
+              "value": "SOA-IA1"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json._payload }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "d94aea03-291c-4796-8ec0-187a33e616df",
+      "name": "N06 IA1 PLANIFICADORA (GPT-4o)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -2592,
+        560
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// N07 — Extrae respuesta IA1 + recupera contexto perdido por HTTP Request\n// El nodo HTTP Request reemplaza el input con la respuesta API — hay que recuperar\n// el contexto original desde N06pre\nconst item = $input.first();\nconst choices = item.json.choices || [];\nlet respuesta_ia1 = (choices[0]?.message?.content || '').trim();\n\n// Strip thinking blocks (Qwen3, DeepSeek-R1, Nemotron los incluyen)\nrespuesta_ia1 = respuesta_ia1.replace(/<think>[\\s\\S]*?<\\/think>/gi, '').trim();\n\n// Recuperar contexto original (config, tarea_usuario, remitente, etc.)\nconst contexto = $('N06pre Preparar Body IA1').item.json;\n\nconsole.log('[N07] respuesta_ia1:', respuesta_ia1.substring(0,120));\nreturn [{ json: { ...contexto, respuesta_ia1 } }];"
+      },
+      "id": "3eb99f2d-c410-47ec-8878-8740d23474d3",
+      "name": "N07 Detector Anti-Evasión IA1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2368,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// N07b — Lógica Anti-Evasión IA1 (Parche 08 + fix modelos free)\nconst fs = require('fs');\nconst path = require('path');\nconst SOA_BASE = '/home/node/soa';\nconst item = $input.first();\nconst respuesta = (item.json.respuesta_ia1 || '').trim();\nconst contexto = item.json;\n\nconst FRASES_EVASION = [\n  'necesito más información','necesito más contexto','podría aclarar',\n  'no tengo acceso','como ia,','como modelo de ia','no puedo acceder',\n  'i need more','could you clarify','i cannot','please provide',\n  'necesito que me','lamentablemente','lo siento, pero','i apologize',\n  'sin embargo, no','desafortunadamente'\n];\n\n// FIX: usar .includes() en lugar de .startsWith() para modelos que añaden preámbulo\nconst FORMATOS_VALIDOS = ['SCRIPTS:','APROBADO:','RECHAZADO:'];\n\nfunction esEvasion(resp) {\n  if (resp.length < 20) return true;\n  const rl = resp.toLowerCase();\n  for (const f of FRASES_EVASION) { if (rl.includes(f)) return true; }\n  // FIX: includes() en lugar de startsWith() — modelos free añaden texto antes del formato\n  for (const fmt of FORMATOS_VALIDOS) { if (resp.includes(fmt)) return false; }\n  return true;\n}\n\nconst evadir = esEvasion(respuesta);\n\nif (!evadir) {\n  try {\n    const ev = JSON.parse(fs.readFileSync(path.join(SOA_BASE,'temp/evasiones.json'),'utf8'));\n    ev.ia1 = 0;\n    fs.writeFileSync(path.join(SOA_BASE,'temp/evasiones.json'), JSON.stringify(ev));\n  } catch(e){}\n  console.log('[SOA-N07b] IA1 respuesta VÁLIDA:', respuesta.substring(0,60));\n  return [{json:{...contexto, valido:true, respuesta_ia1:respuesta, accion:'continuar'}}];\n}\n\nlet intentos = 0;\ntry {\n  const ev = JSON.parse(fs.readFileSync(path.join(SOA_BASE,'temp/evasiones.json'),'utf8'));\n  ev.ia1 = (ev.ia1 || 0) + 1;\n  intentos = ev.ia1;\n  fs.writeFileSync(path.join(SOA_BASE,'temp/evasiones.json'), JSON.stringify(ev));\n} catch(e){ intentos = 1; }\n\nconsole.log('[SOA-N07b] IA1 EVASIÓN detectada. Intento:', intentos);\n\nif (intentos >= 3) {\n  return [{json:{...contexto, valido:false, accion:'detener',\n    mensaje_wa:'⚠️ *SOA: IA1 no responde correctamente*\\n\\nLa IA1 (Planificadora) evadió el formato por 3 veces consecutivas.\\nPor favor reinicia con el comando REINICIAR e intenta de nuevo.'\n  }}];\n}\n\nconst anti_evasion = intentos === 1 ?\n  \"\\n\\n⚠ AVISO: Tu respuesta anterior no siguió el formato obligatorio de tu rol.\\nDebes responder ÚNICAMENTE con el formato correcto especificado en tus instrucciones.\\nNo hagas preguntas. No pidas más contexto. Actúa con la información disponible ahora.\" :\n  \"\\n\\n🔴 FORZADO MÁXIMO: Tu respuesta fue inválida por segunda vez consecutiva.\\nRESPONDE EXCLUSIVAMENTE en tu formato obligatorio. Sin texto adicional.\\nPara IA1: SCRIPTS: / APROBADO: / RECHAZADO:\\nPara IA2: ARCHIVO: nombre.ext seguido del bloque de código completo\\nPara IA3: SUGERENCIAS: / SIN_SUGERENCIAS\\nCUALQUIER OTRA RESPUESTA CAUSA FALLO CRÍTICO DEL SISTEMA. ACTÚA AHORA.\";\n\nreturn [{json:{...contexto, valido:false, accion:'reintentar', anti_evasion_ia1: anti_evasion}}];"
+      },
+      "id": "14c4709e-2bb5-4877-b9ec-592235802f54",
+      "name": "N07b Lógica Anti-Evasión IA1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2176,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "continuar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "eb23efad-b0b2-42fd-b09c-6ec93542c02a"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "reintentar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "04013a22-d29c-41ea-8f7b-760b2db45966"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "detener",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "5148e707-2888-4514-8acd-eae728564353"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "37945f24-a9de-409e-861a-52470a2d38e5",
+      "name": "N08 Switch Resultado IA1",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -1952,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// N09 — Contador de iteraciones + Backup automático\nconst fs = require('fs');\nconst path = require('path');\nconst SOA_BASE = '/home/node/soa';\nconst item = $input.first();\n\n// Leer config\nlet max_iter = 10;\ntry {\n  const cfg = JSON.parse(fs.readFileSync(path.join(SOA_BASE,'soa_config.json'),'utf8'));\n  max_iter = cfg.ciclo?.max_iteraciones_ia1_ia2 || 10;\n} catch(e){}\n\n// Leer e incrementar iteraciones\nlet iters = {ia1_ia2:0, ia3:0};\ntry {\n  iters = JSON.parse(fs.readFileSync(path.join(SOA_BASE,'temp/iteraciones.json'),'utf8'));\n} catch(e){}\n\niters.ia1_ia2 = (iters.ia1_ia2 || 0) + 1;\n\nif (iters.ia1_ia2 > max_iter) {\n  console.log('[SOA-N09] LÍMITE de iteraciones alcanzado:', iters.ia1_ia2);\n  return [{json:{...item.json, limite_alcanzado:true,\n    mensaje_wa:'⚠️ *SOA: Límite de iteraciones alcanzado*\\n\\nSe alcanzaron ' + max_iter + ' iteraciones entre IA1 e IA2 sin convergencia.\\nEnvía REINICIAR para empezar de nuevo o ajusta la tarea.'\n  }}];\n}\n\nfs.writeFileSync(path.join(SOA_BASE,'temp/iteraciones.json'), JSON.stringify(iters));\nconsole.log('[SOA-N09] Iteración IA1-IA2:', iters.ia1_ia2, '/', max_iter);\n\n// Backup del archivo activo\nconst archivo_activo = (item.json.archivo_activo || '').trim();\nlet ruta_backup = '';\n\nif (archivo_activo) {\n  try {\n    const srcDir = fs.existsSync(path.join(SOA_BASE,'output',archivo_activo)) ? 'output' : 'workspace';\n    const src = path.join(SOA_BASE, srcDir, archivo_activo);\n    if (fs.existsSync(src)) {\n      const rollbackDir = path.join(SOA_BASE,'rollback');\n      if (!fs.existsSync(rollbackDir)) fs.mkdirSync(rollbackDir, {recursive:true});\n      const ts = new Date().toISOString().replace(/[-:T]/g,'').replace(/\\.\\d+Z/,'');\n      const baseName = path.basename(archivo_activo, path.extname(archivo_activo));\n      const backupName = baseName + '_' + ts + '.bak';\n      ruta_backup = path.join(rollbackDir, backupName);\n      fs.copyFileSync(src, ruta_backup);\n      console.log('[SOA-N09] Backup creado:', backupName);\n    }\n  } catch(e){ console.error('[SOA-N09] Error en backup:', e.message); }\n}\n\nreturn [{json:{...item.json, limite_alcanzado:false, ruta_backup, iteracion_ia1_ia2: iters.ia1_ia2}}];"
+      },
+      "id": "b85c3fab-9717-4428-a097-f5f4a098a401",
+      "name": "N09 Contador Iteraciones y Backup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1728,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.limite_alcanzado }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              },
+              "id": "d57014cd-7505-4787-98e5-9b6481c9faef"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "61329966-27fc-4c6f-81cf-874a94cc0046",
+      "name": "N09b ¿Límite de Iteraciones?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1504,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.OPENROUTER_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "HTTP-Referer",
+              "value": "https://soa.local"
+            },
+            {
+              "name": "X-Title",
+              "value": "SOA-IA2"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json._payload }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "ed8d558f-216a-4745-8ed2-cb200a33cac5",
+      "name": "N10 IA2 CONSTRUCTORA (Claude)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -1296,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// N11 — Extrae respuesta IA2 + recupera contexto perdido por HTTP Request\nconst item = $input.first();\nconst choices = item.json.choices || [];\nlet respuesta_ia2 = (choices[0]?.message?.content || '').trim();\n\n// Strip thinking blocks\nrespuesta_ia2 = respuesta_ia2.replace(/<think>[\\s\\S]*?<\\/think>/gi, '').trim();\n\n// Recuperar contexto original de N10pre\nconst contexto = $('N10pre Preparar Body IA2').item.json;\n\nconsole.log('[N11] respuesta_ia2:', respuesta_ia2.substring(0,120));\nreturn [{ json: { ...contexto, respuesta_ia2 } }];"
+      },
+      "id": "b2332d8d-79ec-407a-bf7f-78b3e0b51afe",
+      "name": "N11 Extractor y Anti-Evasión IA2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1072,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// N11 — Detector Anti-Evasión IA2 + Extractor v4 + FIX rutas absolutas (P08+P18+FIX-RUTA)\nconst fs = require('fs');\nconst path = require('path');\nconst SOA_BASE = '/home/node/soa';\nconst item = $input.first();\nconst respuesta = (item.json.respuesta_ia2 || '').trim();\nconst config = item.json.config || {};\n\n// ── FIX: Normalizar ruta absoluta o con prefijo → relativa ───────────────\nfunction normalizarRuta(rawName) {\n  let n = rawName || '';\n  n = n.replace(/^\\/home\\/[^\\/]+\\/soa\\/output\\//, '');\n  n = n.replace(/^\\/home\\/node\\/soa\\/output\\//, '');\n  n = n.replace(/^\\/home\\/node\\/soa\\/workspace\\//, '');\n  n = n.replace(/^\\//, '');\n  n = n.replace(/^output\\//, '');   // ← FIX: evita output/output/login.html\n  return n;\n}\n\n// ── Extractor de bloque v4 (Parche 18) ──────────────────────────────────\nfunction extraerBloqueArchivo(resp, cfg) {\n  const blancos_previos = cfg.extractor?.blancos_previos_marcador ?? 1;\n  const blancos_fin = cfg.extractor?.blancos_fin_archivo ?? 5;\n  const lineas = resp.split('\\n');\n  let nombre_archivo = '';\n  let dentro_bloque = false;\n  let tipo_delim = null;\n  let heredoc_marker = '';\n  let contenido = [];\n  let blancos_consec = 0;\n\n  for (let i = 0; i < lineas.length; i++) {\n    const l = lineas[i];\n    const lt = l.trim();\n\n    if (!nombre_archivo) {\n      if (lt.startsWith('ARCHIVO:')) {\n        nombre_archivo = lt.replace('ARCHIVO:', '').trim();\n      }\n      continue;\n    }\n\n    if (!dentro_bloque) {\n      if (lt.startsWith('```')) {\n        tipo_delim = 'backtick'; dentro_bloque = true; continue;\n      }\n      const hm = lt.match(/^<<([A-Z_]+)/);\n      if (hm) { tipo_delim = 'heredoc'; heredoc_marker = hm[1]; dentro_bloque = true; continue; }\n      continue;\n    }\n\n    if (tipo_delim === 'backtick' && lt === '```') break;\n    if (tipo_delim === 'heredoc' && lt === heredoc_marker) break;\n\n    if (lt === '') {\n      blancos_consec++;\n      contenido.push(l);\n    } else {\n      const es_marcador = /^(---|Nota:|Fin |End |Observaci[oó]n:)/i.test(lt);\n      if (es_marcador && blancos_consec >= blancos_previos) {\n        while (contenido.length > 0 && contenido[contenido.length - 1].trim() === '') contenido.pop();\n        break;\n      }\n      blancos_consec = 0;\n      contenido.push(l);\n    }\n    if (blancos_consec >= blancos_fin) {\n      while (contenido.length > 0 && contenido[contenido.length - 1].trim() === '') contenido.pop();\n      break;\n    }\n  }\n  return { nombre_archivo, contenido: contenido.join('\\n') };\n}\n\n// ── Anti-evasión IA2 ─────────────────────────────────────────────────────\nconst FRASES_EVASION = [\n  'necesito más', 'como ia', 'no puedo', 'no tengo acceso', 'i need', 'i cannot',\n  'please provide', 'lamentablemente', 'lo siento', 'i apologize', 'desafortunadamente'\n];\n\nfunction esEvasion(resp) {\n  if (resp.length < 20) return true;\n  if (!resp.includes('ARCHIVO:')) return true;\n  const rl = resp.toLowerCase();\n  for (const f of FRASES_EVASION) {\n    if (rl.includes(f) && !resp.startsWith('ARCHIVO:')) return true;\n  }\n  return false;\n}\n\nconst evadir = esEvasion(respuesta);\n\nif (!evadir) {\n  try {\n    const ev = JSON.parse(fs.readFileSync(path.join(SOA_BASE, 'temp/evasiones.json'), 'utf8'));\n    ev.ia2 = 0;\n    fs.writeFileSync(path.join(SOA_BASE, 'temp/evasiones.json'), JSON.stringify(ev));\n  } catch(e) {}\n\n  let { nombre_archivo, contenido } = extraerBloqueArchivo(respuesta, config);\n\n  if (!nombre_archivo || !contenido.trim()) {\n    return [{ json: { ...item.json, valido: false, accion: 'detener',\n      mensaje_wa: '❌ *SOA: IA2 entregó archivo vacío*\\n\\nNo se pudo extraer el contenido.\\nEnvía REINICIAR e intenta de nuevo.'\n    }}];\n  }\n\n  // Normalizar la ruta antes de guardar\n  nombre_archivo = normalizarRuta(nombre_archivo);\n\n  try {\n    const outputDir = path.join(SOA_BASE, 'output');\n    const ruta_output = path.join(outputDir, nombre_archivo);\n\n    // Crear subdirectorios si no existen (ej: ProyectoAlpha/index.html)\n    const subDir = path.dirname(ruta_output);\n    if (!fs.existsSync(subDir)) fs.mkdirSync(subDir, { recursive: true });\n\n    fs.writeFileSync(ruta_output, contenido, 'utf8');\n    fs.writeFileSync(path.join(SOA_BASE, 'workspace/archivo_activo.txt'), nombre_archivo);\n    console.log('[SOA-N11] IA2 OK — archivo guardado:', nombre_archivo, '(', contenido.length, 'bytes)');\n    return [{ json: { ...item.json, valido: true, accion: 'continuar',\n      nombre_archivo, contenido, ruta_output\n    }}];\n  } catch(e) {\n    return [{ json: { ...item.json, valido: false, accion: 'detener',\n      mensaje_wa: '❌ *SOA: Error al guardar archivo*\\n\\n' + e.message\n    }}];\n  }\n}\n\n// ── Evasión detectada ────────────────────────────────────────────────────\nlet intentos = 0;\ntry {\n  const ev = JSON.parse(fs.readFileSync(path.join(SOA_BASE, 'temp/evasiones.json'), 'utf8'));\n  ev.ia2 = (ev.ia2 || 0) + 1;\n  intentos = ev.ia2;\n  fs.writeFileSync(path.join(SOA_BASE, 'temp/evasiones.json'), JSON.stringify(ev));\n} catch(e) { intentos = 1; }\n\nconsole.log('[SOA-N11] IA2 EVASIÓN intento:', intentos);\n\nif (intentos >= 3) {\n  return [{ json: { ...item.json, valido: false, accion: 'detener',\n    mensaje_wa: '⚠️ *SOA: IA2 no responde correctamente*\\n\\nIA2 evadió el formato 3 veces.\\nEnvía REINICIAR e intenta de nuevo.'\n  }}];\n}\n\nconst anti_evasion = intentos === 1\n  ? '\\n\\n⚠ AVISO: Tu respuesta no siguió el formato obligatorio.\\nDebes responder ÚNICAMENTE con:\\nARCHIVO: nombre.ext (SIN /home/... ni output/ — solo el nombre relativo)\\n```\\n[contenido completo]\\n```'\n  : '\\n\\n🔴 FORZADO MÁXIMO: Segunda falla detectada.\\nARCHIVO: nombre.ext (NUNCA rutas absolutas, NUNCA output/nombre)\\n```\\n[contenido completo]\\n```\\nRESPONDE SOLO CON EL ARCHIVO. NADA MÁS.';\n\nreturn [{ json: { ...item.json, valido: false, accion: 'reintentar', anti_evasion_ia2: anti_evasion }}];"
+      },
+      "id": "ddb1b144-35da-448a-b213-76ff1e02e264",
+      "name": "N11b Lógica Anti-Evasión IA2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -864,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "continuar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "reintentar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "detener",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3f781fc4-2768-4451-bba2-e7e999f02c4f",
+      "name": "N11c Switch Resultado IA2",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -656,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.OPENROUTER_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "HTTP-Referer",
+              "value": "https://soa.local"
+            },
+            {
+              "name": "X-Title",
+              "value": "SOA-IA1-REVISION"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json._payload }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "64c29de5-947b-42af-a8f1-28cb8e75c29a",
+      "name": "N12 IA1 Revisa Trabajo de IA2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -432,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// N12b — Extrae revisión IA1 + recupera contexto perdido por HTTP Request\nconst item = $input.first();\nconst choices = item.json.choices || [];\nlet revision = (choices[0]?.message?.content || '').trim();\n\n// Strip thinking blocks\nrevision = revision.replace(/<think>[\\s\\S]*?<\\/think>/gi, '').trim();\n\n// Recuperar contexto original de N12pre\nconst contexto = $('N12pre Preparar Body Revisión IA1').item.json;\n\n// FIX: usar includes() — modelos free pueden añadir preámbulo antes de APROBADO/RECHAZADO\nconst aprobado  = revision.includes('APROBADO:');\nconst rechazado = revision.includes('RECHAZADO:');\nconsole.log('[N12b] revisión:', revision.substring(0,80), '| aprobado:', aprobado);\n\nreturn [{json:{\n  ...contexto,\n  respuesta_ia1_revision: revision,\n  revision_valida: aprobado || rechazado,\n  aprobado_por_ia1: aprobado\n}}];"
+      },
+      "id": "a5ea8359-ad6d-4217-9c21-37cabc952a54",
+      "name": "N12b Extraer Revisión IA1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.aprobado_por_ia1 }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "equals"
+                    },
+                    "id": "f1d73a7a-6a93-4171-b1cb-9c5743d9a2ca"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.aprobado_por_ia1 }}",
+                    "rightValue": false,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "equals"
+                    },
+                    "id": "684f66de-9412-4db4-b8b5-54bfc3038ccc"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "342a3b6d-4fd2-4f2b-8df6-0fbfd4d7b82f",
+      "name": "N13 ¿IA1 Aprueba o Rechaza?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        16,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.OPENROUTER_API_KEY_2}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "HTTP-Referer",
+              "value": "https://soa.local"
+            },
+            {
+              "name": "X-Title",
+              "value": "SOA-IA3"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json._payload }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "23fd9804-d3d9-46e6-b3e9-d3fac7ec8acd",
+      "name": "N14 IA3 REVISORA (DeepSeek)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        224,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// N15 — Extrae respuesta IA3 + recupera contexto perdido por HTTP Request\nconst item = $input.first();\nconst choices = item.json.choices || [];\nlet respuesta_ia3 = (choices[0]?.message?.content || '').trim();\n\n// Strip thinking blocks\nrespuesta_ia3 = respuesta_ia3.replace(/<think>[\\s\\S]*?<\\/think>/gi, '').trim();\n\n// Recuperar contexto original de N14pre\nconst contexto = $('N14pre Preparar Body IA3').item.json;\n\nconsole.log('[N15] respuesta_ia3:', respuesta_ia3.substring(0,120));\nreturn [{json:{...contexto, respuesta_ia3}}];"
+      },
+      "id": "e3057a43-ac9b-4e29-be42-77b904f8a458",
+      "name": "N15 Extraer Respuesta IA3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// N15 — Detector Anti-Evasión IA3 + Extractor sugerencias v4 (Parche 08+18)\nconst fs = require('fs');\nconst path = require('path');\nconst SOA_BASE = '/home/node/soa';\nconst item = $input.first();\nconst respuesta = (item.json.respuesta_ia3 || '').trim();\nconst config = item.json.config || {};\n\n// ── Extractor de sugerencias v4 (Parche 18) ──\nfunction extraerSugerencias(resp, cfg) {\n  const blancas_corte = cfg.extractor?.blancas_corte_sugerencias ?? 3;\n  if (resp.trim() === 'SIN_SUGERENCIAS') return { sin_sugerencias: true, sugerencias: [] };\n  if (!resp.trim().startsWith('SUGERENCIAS:')) return { sin_sugerencias: false, sugerencias: [], error: 'formato inválido' };\n  const contenido = resp.replace(/^SUGERENCIAS:\\s*/i, '');\n  const lineas = contenido.split('\\n');\n  const sugerencias = [];\n  let actual = '';\n  let blancos = 0;\n  for (const linea of lineas) {\n    if (linea.trim() === '') {\n      blancos++;\n      if (blancos >= blancas_corte) break;\n      continue;\n    }\n    blancos = 0;\n    const m = linea.trim().match(/^(\\d+)[.)\\-]\\s+(.+)/);\n    if (m) {\n      if (actual) sugerencias.push(actual.trim());\n      actual = m[2];\n    } else if (actual) {\n      actual += ' ' + linea.trim();\n    }\n  }\n  if (actual) sugerencias.push(actual.trim());\n\n  // ── NUEVO: Filtrar sugerencias que ya estaban en el ciclo anterior ──\n  const sugerenciasPrevias = item.json.sugerencias_previas_ia3 || [];\n  const sugerenciasFiltradas = sugerencias.filter(s => {\n    const sNorm = s.toLowerCase().trim();\n    return !sugerenciasPrevias.some(prev => {\n      const prevNorm = prev.toLowerCase().trim();\n      // Considera duplicada si comparten más del 60% de palabras clave\n      const palabrasS = sNorm.split(/\\s+/);\n      const palabrasPrev = prevNorm.split(/\\s+/);\n      const comunes = palabrasS.filter(p => p.length > 4 && palabrasPrev.includes(p));\n      return comunes.length >= 3;\n    });\n  });\n\n  console.log('[SOA-N15] Sugerencias originales:', sugerencias.length, '| Tras filtro de repetidas:', sugerenciasFiltradas.length);\n  return { sin_sugerencias: sugerenciasFiltradas.length === 0, sugerencias: sugerenciasFiltradas };\n}\n\n// ── Anti-evasión IA3 ──\nfunction esEvasion(resp) {\n  if (resp.length < 10) return true;\n  if (resp.trim() === 'SIN_SUGERENCIAS') return false;\n  if (resp.startsWith('SUGERENCIAS:')) return false;\n  return true;\n}\n\nconst evadir = esEvasion(respuesta);\n\nif (!evadir) {\n  try {\n    const ev = JSON.parse(fs.readFileSync(path.join(SOA_BASE, 'temp/evasiones.json'), 'utf8'));\n    ev.ia3 = 0;\n    fs.writeFileSync(path.join(SOA_BASE, 'temp/evasiones.json'), JSON.stringify(ev));\n  } catch(e) {}\n\n  const resultado = extraerSugerencias(respuesta, config);\n\n  // Guardar sugerencias actuales para el próximo ciclo (anti-loop)\n  const sugerencias_para_siguiente = resultado.sugerencias || [];\n\n  console.log('[SOA-N15] IA3 OK — sin_sugerencias:', resultado.sin_sugerencias, '| count:', resultado.sugerencias?.length);\n  return [{ json: {\n    ...item.json,\n    valido: true,\n    accion: 'continuar',\n    ...resultado,\n    sugerencias_previas_ia3: sugerencias_para_siguiente\n  }}];\n}\n\nlet intentos = 0;\ntry {\n  const ev = JSON.parse(fs.readFileSync(path.join(SOA_BASE, 'temp/evasiones.json'), 'utf8'));\n  ev.ia3 = (ev.ia3 || 0) + 1;\n  intentos = ev.ia3;\n  fs.writeFileSync(path.join(SOA_BASE, 'temp/evasiones.json'), JSON.stringify(ev));\n} catch(e) { intentos = 1; }\n\nconsole.log('[SOA-N15] IA3 EVASIÓN intento:', intentos);\n\nif (intentos >= 3) {\n  return [{ json: {\n    ...item.json,\n    valido: false,\n    accion: 'detener',\n    mensaje_wa: '⚠️ *SOA: IA3 no responde correctamente*\\n\\nLa IA3 (Revisora) evadió el formato por 3 veces.\\nEnvía REINICIAR e intenta de nuevo.'\n  }}];\n}\n\nconst anti_evasion = intentos === 1\n  ? '\\n\\n⚠ AVISO: Tu respuesta anterior no siguió el formato obligatorio.\\nResponde ÚNICAMENTE con SIN_SUGERENCIAS o SUGERENCIAS: seguido de puntos numerados.\\nNo hagas preguntas. No agregues texto adicional.'\n  : '\\n\\n🔴 ÚLTIMO INTENTO: Respuesta inválida por segunda vez.\\nRESPONDE SOLO:\\nSIN_SUGERENCIAS\\no\\nSUGERENCIAS:\\n1. [punto concreto no implementado de la tarea]\\nCUALQUIER OTRA COSA CAUSA FALLO CRÍTICO.';\n\nreturn [{ json: {\n  ...item.json,\n  valido: false,\n  accion: 'reintentar',\n  anti_evasion_ia3: anti_evasion\n}}];"
+      },
+      "id": "71f02919-77f2-4f00-8939-f9d1a6c30e2d",
+      "name": "N15b Lógica Anti-Evasión IA3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "continuar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "30ca9641-8ef1-4d23-8b72-26cea6301d1f"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "reintentar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "26f2a42e-4972-4ff3-b4ac-a0d08ee5238a"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "detener",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "03941114-6401-4bc7-a35b-e46dedd5528e"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b4cf365b-8839-4931-bb9f-059251d484fe",
+      "name": "N15c Switch Resultado IA3",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        864,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.sin_sugerencias }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              },
+              "id": "001f9214-31c2-45c8-bfc5-bb433c8a34bd"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b0e220aa-8701-44fb-877c-0db4646108aa",
+      "name": "N16 ¿IA3 Tiene Sugerencias?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/deploy",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ archivo: $json.nombre_archivo, contenido: $json.contenido, ruta_destino: $json.ruta_output }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "8e9e5f38-1b92-4dbf-8e3e-983901e4f910",
+      "name": "N17 Deploy con Claude Code",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1312,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ════════════════════════════════════════════════════════════════\n// N18 — Limpieza + Verificar Deploy + Sesión\n// ════════════════════════════════════════════════════════════════\nconst fs   = require('fs');\nconst path = require('path');\nconst SOA_BASE      = '/home/node/soa';\nconst DIR_CONTEXT   = path.join(SOA_BASE, 'context');\nconst DIR_TEMP      = path.join(SOA_BASE, 'temp');\nconst DIR_ROLLBACK  = path.join(SOA_BASE, 'rollback');\nconst DIR_WORKSPACE = path.join(SOA_BASE, 'workspace');\n\nconst item = $input.first();\nconst body = item.json;\n\n// ── 1. EVALUAR RESULTADO DEL DEPLOY ──────────────────────────────\nconst resultado      = (body.resultado || body.status || '').toString();\nconst ok             = body.ok === true || resultado.includes('DEPLOY_OK');\nconst nombre_archivo = body.nombre_archivo || body.archivo || item.json.nombre_archivo || 'archivo';\nconst url            = body.url || '';\nconst destino        = body.destino || '';\nconst errorMsg       = (body.error || body.mensaje || 'Error desconocido').toString().substring(0, 200);\nconst ts = new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' });\nconst logs = [];\n\n// ── 2. RAMA ÉXITO ─────────────────────────────────────────────────\nif (ok) {\n\n  // 2a. Escribir contexto_sesion.txt\n  try {\n    const tarea    = item.json.tarea_usuario || 'sin descripción';\n    const iterIA12 = item.json.iteracion_ia1_ia2 || 0;\n    const iterIA3  = item.json.iteracion_ia3 || 0;\n    const sesion =\n      '=== Última sesión: ' + ts + ' ===\\n' +\n      'Tarea: ' + tarea + '\\n' +\n      'Archivo trabajado: ' + nombre_archivo + '\\n' +\n      'Iteraciones IA1/IA2: ' + iterIA12 + '\\n' +\n      'Iteraciones IA3: ' + iterIA3 + '\\n' +\n      'Deploy destino: ' + (destino || 'local') + '\\n' +\n      (url ? 'URL pública: ' + url + '\\n' : '') +\n      'Estado: Deploy exitoso\\n' +\n      '---\\n';\n    fs.mkdirSync(DIR_CONTEXT, { recursive: true });\n    fs.writeFileSync(path.join(DIR_CONTEXT, 'contexto_sesion.txt'), sesion, 'utf8');\n    logs.push('[N18] ✅ contexto_sesion.txt actualizado');\n  } catch(e) { logs.push('[N18] ⚠ Error escribiendo contexto: ' + e.message); }\n\n  // 2b. Resetear contadores de iteraciones y evasiones\n  try {\n    fs.mkdirSync(DIR_TEMP, { recursive: true });\n    fs.writeFileSync(path.join(DIR_TEMP, 'iteraciones.json'),\n      JSON.stringify({ ia1_ia2: 0, ia3: 0 }, null, 2), 'utf8');\n    fs.writeFileSync(path.join(DIR_TEMP, 'evasiones.json'),\n      JSON.stringify({ ia1: 0, ia2: 0, ia3: 0 }, null, 2), 'utf8');\n    logs.push('[N18] ✅ Contadores reseteados');\n  } catch(e) { logs.push('[N18] ⚠ Error reseteando contadores: ' + e.message); }\n\n  // 2c. Limpiar workspace y sugerencias previas de IA3\n  try {\n    fs.mkdirSync(DIR_WORKSPACE, { recursive: true });\n    fs.writeFileSync(path.join(DIR_WORKSPACE, 'archivo_activo.txt'), '', 'utf8');\n    // NUEVO: limpiar cache de sugerencias previas para evitar contaminación entre tareas\n    const cachePath = path.join(DIR_TEMP, 'sugerencias_previas_ia3.json');\n    if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath);\n    logs.push('[N18] ✅ Workspace y cache IA3 limpiados');\n  } catch(e) { logs.push('[N18] ⚠ Error limpiando workspace: ' + e.message); }\n\n  // 2d. Purgar rollbacks con más de 7 días\n  try {\n    const SIETE_DIAS = 7 * 24 * 60 * 60 * 1000;\n    const ahora = Date.now();\n    if (fs.existsSync(DIR_ROLLBACK)) {\n      const purged = [];\n      fs.readdirSync(DIR_ROLLBACK)\n        .filter(f => f.endsWith('.bak'))\n        .forEach(f => {\n          const ruta = path.join(DIR_ROLLBACK, f);\n          const edad = ahora - fs.statSync(ruta).mtimeMs;\n          if (edad > SIETE_DIAS) { fs.unlinkSync(ruta); purged.push(f); }\n        });\n      logs.push(purged.length > 0\n        ? '[N18] ✅ Rollbacks purgados: ' + purged.join(', ')\n        : '[N18] ✅ Sin rollbacks viejos que purgar');\n    }\n  } catch(e) { logs.push('[N18] ⚠ Error purgando rollbacks: ' + e.message); }\n\n  // 2e. Construir mensaje WhatsApp de éxito\n  const iteraciones = item.json.iteracion_ia1_ia2 || 0;\n  const iterIA3msg  = item.json.iteracion_ia3 || 0;\n  const mensaje_wa =\n    '✅ *Tarea completada*\\n\\n' +\n    '📄 Archivo: *' + nombre_archivo + '*\\n' +\n    (url     ? '🔗 ' + url + '\\n'     : '') +\n    (destino ? '📁 ' + destino + '\\n' : '') +\n    '🔄 Ciclos IA1/IA2: ' + iteraciones + ' | IA3: ' + iterIA3msg + '\\n' +\n    '🕐 ' + ts + '\\n\\n' +\n    '_El sistema está listo para la siguiente tarea._';\n\n  logs.forEach(l => console.log(l));\n  return [{ json: {\n    ...item.json,\n    nombre_archivo,\n    exito:      true,\n    mensaje_wa,\n    url,\n    destino,\n    limpieza:   'OK',\n    logs_n18:   logs,\n    // Limpiar sugerencias previas del payload también\n    sugerencias_previas_ia3: []\n  }}];\n\n// ── 3. RAMA ERROR ─────────────────────────────────────────────────\n} else {\n\n  const mensaje_wa =\n    '❌ *Deploy fallido*\\n\\n' +\n    '📄 Archivo: ' + nombre_archivo + '\\n' +\n    '🔴 Error: ' + errorMsg + '\\n\\n' +\n    '_Verifica que el deploy server esté corriendo en puerto 3000.\\n' +\n    'Envía REINICIAR para empezar de nuevo._';\n\n  console.log('[N18] ❌ DEPLOY_ERROR:', errorMsg);\n  return [{ json: {\n    ...item.json,\n    nombre_archivo,\n    exito:      false,\n    mensaje_wa,\n    url,\n    destino,\n    limpieza:   'OMITIDA_POR_ERROR',\n    logs_n18:   ['[N18] ❌ Deploy fallido — limpieza omitida']\n  }}];\n}"
+      },
+      "id": "34f9f640-a8d9-4f49-8d47-de9f7de30925",
+      "name": "N18 Verificar Resultado Deploy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WA_API_URL || \"http://soa_evolution:8080\" }}/message/sendText/{{ $env.WA_INSTANCE || \"SOA\" }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.WA_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "=application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ number: ($json.remitente || $env.WA_NUMERO_AUTORIZADO), text: ($json.respuesta_final || $json.mensaje_wa || $json.respuesta_ia1 || \"[Sin respuesta]\") }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "d8d5b66d-4289-4c80-89eb-f78d31d4c33e",
+      "name": "N19 Notificar Usuario WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1760,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// N06pre — Construir payload para IA1 Planificadora\nconst item = $input.first();\nconst modelo = item.json.config.modelos.ia1;\nconst payload = {\n  model: modelo,\n  max_tokens: 4096,\n  temperature: 0.2,\n  messages: [\n    {\n      role: 'system',\n      content: 'Eres IA1 PLANIFICADORA (rutas RELATIVAS, UN archivo por ciclo). Analiza la tarea y genera instrucciones numeradas para IA2.\\nResponde UNICAMENTE con el formato:\\nSCRIPTS:\\n1. [instruccion concreta]\\n2. [instruccion concreta]\\nNo hagas preguntas. Actua con la informacion disponible ahora.\\nIMPORTANTE: Genera instrucciones SOLO para implementar lo que pide la tarea. NO agregues mejoras opcionales, accesibilidad extra, ni buenas practicas adicionales que no fueron solicitadas.'\n    },\n    {\n      role: 'user',\n      content: 'Tarea: ' + item.json.tarea_usuario +\n        '\\n\\nContexto del proyecto:\\n' + (item.json.contexto_proyecto || '') +\n        '\\n\\nSesion anterior:\\n' + (item.json.contexto_sesion || '') +\n        (item.json.archivo_activo ? '\\n\\nArchivo activo: ' + item.json.archivo_activo : '') +\n        (item.json.contenido_archivo_activo ? '\\n\\nContenido actual del archivo:\\n' + item.json.contenido_archivo_activo : '') +\n        (item.json.anti_evasion_ia1 || '')\n    }\n  ]\n};\nconsole.log('[N06pre] modelo:', modelo, '| tarea:', item.json.tarea_usuario.substring(0,60));\nreturn [{json: {...item.json, _payload: payload}}];"
+      },
+      "id": "5310646e-3be1-49be-8044-88e88fbcad2a",
+      "name": "N06pre Preparar Body IA1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2704,
+        848
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// N10pre — Construir payload para IA2 Constructora\nconst item = $input.first();\nconst modelo = item.json.config.modelos.ia2;\nconst payload = {\n  model: modelo,\n  max_tokens: 8192,\n  temperature: 0.1,\n  messages: [\n    {\n      role: 'system',\n      content: 'Eres IA2 CONSTRUCTORA. Recibes instrucciones de IA1 y construyes o modificas el archivo.\\nREGLAS OBLIGATORIAS:\\n1. En ARCHIVO: usa SOLO ruta RELATIVA (ej: register.html, NUNCA /home/... ni output/...).\\n2. Escribe el archivo COMPLETO, sin omitir ninguna línea.\\n3. Implementa EXACTAMENTE lo que piden las instrucciones. NO agregues mejoras extra, accesibilidad adicional ni cambios no solicitados.\\n4. Si el archivo ya tiene algo implementado correctamente, CONSERVALO tal cual.\\nResponde UNICAMENTE con el formato:\\nARCHIVO: nombre_archivo.ext\\n```\\n[contenido completo del archivo]\\n```\\nNo hagas preguntas.'\n    },\n    {\n      role: 'user',\n      content: 'Instrucciones de IA1:\\n' + (item.json.respuesta_ia1 || '') +\n        '\\n\\nContexto del proyecto:\\n' + (item.json.contexto_proyecto || '') +\n        '\\n\\nArchivo activo: ' + (item.json.archivo_activo || 'ninguno') +\n        '\\n\\nContenido actual del archivo (CONSERVA todo lo que ya está bien):\\n' + (item.json.contenido_archivo_activo || '[Archivo nuevo]') +\n        (item.json.respuesta_ia1_revision ? '\\n\\n⚠ REVISIÓN ANTERIOR DE IA1 — DEBES CORREGIR ESTO:\\n' + item.json.respuesta_ia1_revision : '') +\n        (item.json.anti_evasion_ia2 || '') +\n        '\\n\\nRECUERDA: Solo implementa los cambios indicados. No inventes mejoras adicionales.'\n    }\n  ]\n};\nconsole.log('[N10pre] modelo:', modelo, '| archivo:', item.json.archivo_activo, '| iteracion:', item.json.iteracion_ia1_ia2);\nreturn [{json: {...item.json, _payload: payload}}];"
+      },
+      "id": "b423d351-8832-4877-b842-30d3ba426a34",
+      "name": "N10pre Preparar Body IA2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1104,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// N12pre — Construir payload para revisión de IA1\nconst item = $input.first();\nconst modelo = item.json.config.modelos.ia1;\nconst payload = {\n  model: modelo,\n  max_tokens: 1024,\n  temperature: 0.1,\n  messages: [\n    {\n      role: 'system',\n      content: 'Eres IA1 REVISORA. Revisa si el archivo de IA2 cumple las instrucciones originales.\\nResponde UNICAMENTE con:\\nAPROBADO: [justificacion breve]\\no\\nRECHAZADO: [razon especifica y que debe corregir IA2]'\n    },\n    {\n      role: 'user',\n      content: 'Instrucciones originales de IA1:\\n' + (item.json.respuesta_ia1 || '') +\n        '\\n\\nArchivo generado por IA2 (' + (item.json.nombre_archivo || 'sin nombre') + '):\\n' +\n        (item.json.contenido || '[Vacio]')\n    }\n  ]\n};\nconsole.log('[N12pre] modelo:', modelo);\nreturn [{json: {...item.json, _payload: payload}}];"
+      },
+      "id": "74be45bf-a16f-4b9e-8038-a23b5019efee",
+      "name": "N12pre Preparar Body Revisión IA1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -640,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// N14pre — Construir payload para IA3 Revisora Final\nconst MODELOS_SIN_SYSTEM = [\n  'google/gemma-3-27b-it:free',\n  'google/gemma-2-9b-it:free',\n  'google/gemma-3-12b-it:free'\n];\nconst FALLBACK_IA3 = [\n  'nvidia/nemotron-3-super-120b-a12b:free',\n  'meta-llama/llama-3.1-8b-instruct:free',\n  'qwen/qwen3-8b:free'\n];\nconst item = $input.first();\nconst modeloConfig = item.json.config?.modelos?.ia3 || '';\nconst modeloMuerto = 'mistralai/mistral-7b-instruct:free';\nconst modelo = (modeloConfig && modeloConfig !== modeloMuerto)\n  ? modeloConfig\n  : FALLBACK_IA3[0];\n\nconst systemContent = 'Eres IA3 REVISORA FINAL. Tu única función es verificar que la tarea del usuario fue implementada correctamente.\\nREGLAS ESTRICTAS:\\n1. Responde SIN_SUGERENCIAS si la tarea original está implementada, aunque el código sea mejorable.\\n2. Responde SUGERENCIAS solo si hay algo de la tarea original que NO fue implementado o está MAL implementado.\\n3. NO sugieras mejoras de accesibilidad, rendimiento, estilo ni buenas prácticas que no fueron pedidas.\\n4. NO repitas sugerencias de ciclos anteriores.\\n5. Si ya se aplicaron tus sugerencias previas, responde SIN_SUGERENCIAS obligatoriamente.\\nResponde UNICAMENTE con:\\nSIN_SUGERENCIAS\\no\\nSUGERENCIAS:\\n1. [error concreto respecto a la tarea]\\nNo hagas preguntas.';\n\nconst userContent =\n  'Tarea original del usuario:\\n' + (item.json.tarea_usuario || '') +\n  '\\n\\n---\\nArchivo generado (' + (item.json.nombre_archivo || 'sin nombre') + '):\\n' +\n  (item.json.contenido || item.json.respuesta_ia2 || '[Vacio]') +\n  '\\n\\n---\\nPREGUNTA: ¿La tarea original está completamente implementada en el archivo? Si sí → SIN_SUGERENCIAS. Si no → SUGERENCIAS con el punto específico faltante.' +\n  (item.json.anti_evasion_ia3 || '');\n\nconst noSoportaSystem = MODELOS_SIN_SYSTEM.some(m => modelo.startsWith(m.split(':')[0]));\nconst messages = noSoportaSystem\n  ? [{ role: 'user', content: systemContent + '\\n\\n---\\n\\n' + userContent }]\n  : [\n      { role: 'system', content: systemContent },\n      { role: 'user',   content: userContent }\n    ];\n\nconst payload = { model: modelo, max_tokens: 512, temperature: 0.1, messages };\nconsole.log('[N14pre] modelo:', modelo, '| archivo:', item.json.nombre_archivo, '| sin_system:', noSoportaSystem);\nreturn [{ json: { ...item.json, _payload: payload } }];"
+      },
+      "id": "2c11129d-dcd1-4f1a-a962-35fc08ba9265",
+      "name": "N14pre Preparar Body IA3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "N01 Recepción WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "N02 Validar Webhook y Número",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N02 Validar Webhook y Número": {
+      "main": [
+        [
+          {
+            "node": "N03 Extraer y Clasificar Mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N03 Extraer y Clasificar Mensaje": {
+      "main": [
+        [
+          {
+            "node": "N04 Clasificar Tipo de Entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N04 Clasificar Tipo de Entrada": {
+      "main": [
+        [
+          {
+            "node": "N05 Preparar Contexto para IAs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "N04b Transcribir Audio (Whisper)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "N04c Manejar Comandos Especiales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N04b Transcribir Audio (Whisper)": {
+      "main": [
+        [
+          {
+            "node": "N05 Preparar Contexto para IAs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N04c Manejar Comandos Especiales": {
+      "main": [
+        [
+          {
+            "node": "N19 Notificar Usuario WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N05 Preparar Contexto para IAs": {
+      "main": [
+        [
+          {
+            "node": "N06pre Preparar Body IA1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N06 IA1 PLANIFICADORA (GPT-4o)": {
+      "main": [
+        [
+          {
+            "node": "N07 Detector Anti-Evasión IA1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N07 Detector Anti-Evasión IA1": {
+      "main": [
+        [
+          {
+            "node": "N07b Lógica Anti-Evasión IA1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N07b Lógica Anti-Evasión IA1": {
+      "main": [
+        [
+          {
+            "node": "N08 Switch Resultado IA1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N08 Switch Resultado IA1": {
+      "main": [
+        [
+          {
+            "node": "N09 Contador Iteraciones y Backup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "N06pre Preparar Body IA1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "N19 Notificar Usuario WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N09 Contador Iteraciones y Backup": {
+      "main": [
+        [
+          {
+            "node": "N09b ¿Límite de Iteraciones?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N09b ¿Límite de Iteraciones?": {
+      "main": [
+        [
+          {
+            "node": "N19 Notificar Usuario WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "N10pre Preparar Body IA2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N11b Lógica Anti-Evasión IA2": {
+      "main": [
+        [
+          {
+            "node": "N11c Switch Resultado IA2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N11c Switch Resultado IA2": {
+      "main": [
+        [
+          {
+            "node": "N12pre Preparar Body Revisión IA1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "N10pre Preparar Body IA2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "N19 Notificar Usuario WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N12 IA1 Revisa Trabajo de IA2": {
+      "main": [
+        [
+          {
+            "node": "N12b Extraer Revisión IA1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N12b Extraer Revisión IA1": {
+      "main": [
+        [
+          {
+            "node": "N13 ¿IA1 Aprueba o Rechaza?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N13 ¿IA1 Aprueba o Rechaza?": {
+      "main": [
+        [
+          {
+            "node": "N14pre Preparar Body IA3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "N09 Contador Iteraciones y Backup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N14 IA3 REVISORA (DeepSeek)": {
+      "main": [
+        [
+          {
+            "node": "N15 Extraer Respuesta IA3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N15 Extraer Respuesta IA3": {
+      "main": [
+        [
+          {
+            "node": "N15b Lógica Anti-Evasión IA3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N15b Lógica Anti-Evasión IA3": {
+      "main": [
+        [
+          {
+            "node": "N15c Switch Resultado IA3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N15c Switch Resultado IA3": {
+      "main": [
+        [
+          {
+            "node": "N16 ¿IA3 Tiene Sugerencias?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "N14pre Preparar Body IA3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "N19 Notificar Usuario WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N16 ¿IA3 Tiene Sugerencias?": {
+      "main": [
+        [
+          {
+            "node": "N17 Deploy con Claude Code",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "N05 Preparar Contexto para IAs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N17 Deploy con Claude Code": {
+      "main": [
+        [
+          {
+            "node": "N18 Verificar Resultado Deploy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N18 Verificar Resultado Deploy": {
+      "main": [
+        [
+          {
+            "node": "N19 Notificar Usuario WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N06pre Preparar Body IA1": {
+      "main": [
+        [
+          {
+            "node": "N06 IA1 PLANIFICADORA (GPT-4o)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N10pre Preparar Body IA2": {
+      "main": [
+        [
+          {
+            "node": "N10 IA2 CONSTRUCTORA (Claude)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N12pre Preparar Body Revisión IA1": {
+      "main": [
+        [
+          {
+            "node": "N12 IA1 Revisa Trabajo de IA2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N14pre Preparar Body IA3": {
+      "main": [
+        [
+          {
+            "node": "N14 IA3 REVISORA (DeepSeek)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N10 IA2 CONSTRUCTORA (Claude)": {
+      "main": [
+        [
+          {
+            "node": "N11 Extractor y Anti-Evasión IA2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "N11 Extractor y Anti-Evasión IA2": {
+      "main": [
+        [
+          {
+            "node": "N11b Lógica Anti-Evasión IA2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "4ca20e5f-bac4-4566-9606-dfb4f679cf01",
+  "meta": {
+    "instanceId": "917e19b20d3f1c26feed9136a0855d15e6b64cdbe7b70baaa480becf075fa402"
+  },
+  "id": "kwaGoOM7DQSPAPxG",
+  "tags": []
+}
